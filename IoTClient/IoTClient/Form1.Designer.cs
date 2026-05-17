@@ -39,6 +39,9 @@
             lblLog = new Label();
             txtLog = new TextBox();
             pnlChart = new Panel();
+            lblStatus = new Label();
+            btnDisconnect = new Button();
+            btnClearLog = new Button();
             SuspendLayout();
             // 
             // lblIp
@@ -77,7 +80,7 @@
             // 
             // btnConnect
             // 
-            btnConnect.Location = new Point(272, 40);
+            btnConnect.Location = new Point(279, 15);
             btnConnect.Name = "btnConnect";
             btnConnect.Size = new Size(100, 30);
             btnConnect.TabIndex = 4;
@@ -119,7 +122,7 @@
             // lblLog
             // 
             lblLog.AutoSize = true;
-            lblLog.Location = new Point(21, 251);
+            lblLog.Location = new Point(21, 270);
             lblLog.Name = "lblLog";
             lblLog.Size = new Size(27, 15);
             lblLog.TabIndex = 8;
@@ -127,12 +130,12 @@
             // 
             // txtLog
             // 
-            txtLog.Location = new Point(21, 269);
+            txtLog.Location = new Point(21, 291);
             txtLog.Multiline = true;
             txtLog.Name = "txtLog";
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.Vertical;
-            txtLog.Size = new Size(600, 180);
+            txtLog.Size = new Size(600, 158);
             txtLog.TabIndex = 9;
             txtLog.WordWrap = false;
             // 
@@ -145,11 +148,44 @@
             pnlChart.Size = new Size(600, 120);
             pnlChart.TabIndex = 10;
             // 
+            // lblStatus
+            // 
+            lblStatus.AutoSize = true;
+            lblStatus.Location = new Point(279, 95);
+            lblStatus.Name = "lblStatus";
+            lblStatus.Size = new Size(124, 15);
+            lblStatus.TabIndex = 11;
+            lblStatus.Text = "Status : Disconnected";
+            // 
+            // btnDisconnect
+            // 
+            btnDisconnect.Enabled = false;
+            btnDisconnect.Location = new Point(279, 51);
+            btnDisconnect.Name = "btnDisconnect";
+            btnDisconnect.Size = new Size(100, 30);
+            btnDisconnect.TabIndex = 12;
+            btnDisconnect.Text = "Disconnect";
+            btnDisconnect.UseVisualStyleBackColor = true;
+            btnDisconnect.Click += btnDisconnect_Click;
+            // 
+            // btnClearLog
+            // 
+            btnClearLog.Location = new Point(54, 255);
+            btnClearLog.Name = "btnClearLog";
+            btnClearLog.Size = new Size(100, 30);
+            btnClearLog.TabIndex = 13;
+            btnClearLog.Text = "Clear Log";
+            btnClearLog.UseVisualStyleBackColor = true;
+            btnClearLog.Click += btnClearLog_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(684, 461);
+            Controls.Add(btnClearLog);
+            Controls.Add(btnDisconnect);
+            Controls.Add(lblStatus);
             Controls.Add(pnlChart);
             Controls.Add(txtLog);
             Controls.Add(lblLog);
@@ -182,5 +218,8 @@
         private Label lblLog;
         private TextBox txtLog;
         private Panel pnlChart;
+        private Label lblStatus;
+        private Button btnDisconnect;
+        private Button btnClearLog;
     }
 }

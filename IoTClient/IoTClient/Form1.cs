@@ -20,6 +20,7 @@ namespace IoTClient
 
             btnLedOn.Enabled = false;
             btnLedOff.Enabled = false;
+            btnDisconnect.Enabled = false;
 
             pnlChart.Paint += pnlChart_Paint;
         }
@@ -52,6 +53,8 @@ namespace IoTClient
                 btnConnect.Enabled = false;
                 btnLedOn.Enabled = true;
                 btnLedOff.Enabled = true;
+                btnDisconnect.Enabled = true;
+                lblStatus.Text = "Status: Connected";
 
                 AddLog("Server connected.");
 
@@ -213,15 +216,30 @@ namespace IoTClient
 
         private void Disconnect()
         {
+            if (!isConnected)
+            {
+                return;
+            }
+
             isConnected = false;
 
-            reader?.Close();
-            writer?.Close();
-            client?.Close();
+            try
+            {
+                reader?.Close();
+                writer?.Close();
+                client?.Close();
+            }
+            catch
+            {
+                // 연결 종료 중 발생하는 예외는 무시
+            }
 
             btnConnect.Enabled = true;
+            btnDisconnect.Enabled = false;
             btnLedOn.Enabled = false;
             btnLedOff.Enabled = false;
+
+            lblStatus.Text = "Status: Disconnected";
 
             AddLog("Disconnected.");
         }
@@ -235,6 +253,16 @@ namespace IoTClient
             client?.Close();
 
             base.OnFormClosing(e);
+        }
+
+        private void btnDisconnect_Click(object sender, EventArgs e)
+        {
+            Disconnect();
+        }
+
+        private void btnClearLog_Click(object sender, EventArgs e)
+        {
+            txtLog.Clear();
         }
     }
 }
