@@ -58,8 +58,9 @@ public sealed class ServerEndPoint : IAsyncDisposable
     private CancellationTokenSource? _serverCancellation;
     private Task? _acceptLoopTask;
     private ClientSession? _arduino;
-    private bool _isLedOn;
-    private int? _lastLdrValue;
+    private string? _lastRadarMessage;
+    private string? _lastAlertMessage;
+    private string? _lastStatusMessage;
 
     public ServerEndPoint(int port = 9000)
         : this(IPAddress.Any, port)
@@ -78,9 +79,11 @@ public sealed class ServerEndPoint : IAsyncDisposable
 
     public int Port => _port;
 
-    public bool IsLedOn => _isLedOn;
+    public string? LastRadarMessage => _lastRadarMessage;
 
-    public int? LastLdrValue => _lastLdrValue;
+    public string? LastAlertMessage => _lastAlertMessage;
+
+    public string? LastStatusMessage => _lastStatusMessage;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -178,8 +181,7 @@ public sealed class ServerEndPoint : IAsyncDisposable
     {
         try
         {
-            await client.SendAsync("SERVER:READY", cancellationToken);
-            await SendCurrentStateAsync(client, cancellationToken);
+            await client.SendAsync("STATUS:SERVER_READY", cancellationToken);
 
             while (!cancellationToken.IsCancellationRequested && client.TcpClient.Connected)
             {
@@ -228,24 +230,25 @@ public sealed class ServerEndPoint : IAsyncDisposable
             return;
         }
 
-        if (command is "ROLE:APP" or "ROLE:MONITOR" or "APP" or "MONITOR")
+        if (command is "ROLE:CLIENT" or "ROLE:APP" or "ROLE:MONITOR" or "APP" or "MONITOR")
         {
-            sender.Role = ClientRole.App;
-            await sender.SendAsync("ROLE:APP:OK", cancellationToken);
+            sender.Role = ClientRole.Client;
+            await sender.SendAsync("ROLE:CLIENT:OK", cancellationToken);
+            await SendCurrentStateAsync(sender, cancellationToken);
             return;
         }
 
-        if (TryParseLdrValue(message, out int ldrValue))
+        if (IsArduinoBroadcastMessage(command))
         {
             sender.Role = sender.Role == ClientRole.Unknown ? ClientRole.Arduino : sender.Role;
-            _lastLdrValue = ldrValue;
-            await BroadcastAsync($"LDR:{ldrValue}", cancellationToken);
+            await BroadcastToClientsAsync(message, cancellationToken);
+            SaveDeviceState(message);
             return;
         }
 
-        if (TryParseLedCommand(command, out bool ledOn))
+        if (IsClientCommand(command))
         {
-            await ChangeLedStateAsync(ledOn, cancellationToken);
+            await ForwardCommandToArduinoAsync(sender, command, cancellationToken);
             return;
         }
 
@@ -266,7 +269,7 @@ public sealed class ServerEndPoint : IAsyncDisposable
         {
             if (_arduino is not null && _arduino.Id != client.Id)
             {
-                _arduino.Role = ClientRole.App;
+                _arduino.Role = ClientRole.Client;
                 await _arduino.SendAsync("ROLE:ARDUINO:REPLACED", cancellationToken);
             }
 
@@ -279,41 +282,62 @@ public sealed class ServerEndPoint : IAsyncDisposable
         }
 
         await client.SendAsync("ROLE:ARDUINO:OK", cancellationToken);
-        await client.SendAsync(_isLedOn ? "LED_ON" : "LED_OFF", cancellationToken);
         Log($"Arduino registered: {client.RemoteEndPoint}");
     }
 
-    private async Task ChangeLedStateAsync(bool ledOn, CancellationToken cancellationToken)
+    private async Task ForwardCommandToArduinoAsync(ClientSession sender, string command, CancellationToken cancellationToken)
     {
-        _isLedOn = ledOn;
-
-        string arduinoCommand = ledOn ? "LED_ON" : "LED_OFF";
-        string stateMessage = ledOn ? "LED:ON" : "LED:OFF";
-
         ClientSession? arduino = _arduino;
 
-        if (arduino is not null && _clients.ContainsKey(arduino.Id))
+        if (arduino is null || !_clients.ContainsKey(arduino.Id))
         {
-            await arduino.SendAsync(arduinoCommand, cancellationToken);
+            await sender.SendAsync("ERROR:ARDUINO_NOT_CONNECTED", cancellationToken);
+            return;
         }
 
-        await BroadcastAsync(stateMessage, cancellationToken);
-        Log($"LED state changed: {(ledOn ? "ON" : "OFF")}");
+        await arduino.SendAsync(command, cancellationToken);
+        Log($"Forward to Arduino: {command}");
     }
 
     private async Task SendCurrentStateAsync(ClientSession client, CancellationToken cancellationToken)
     {
-        await client.SendAsync(_isLedOn ? "LED:ON" : "LED:OFF", cancellationToken);
-
-        if (_lastLdrValue.HasValue)
+        if (_lastRadarMessage is not null)
         {
-            await client.SendAsync($"LDR:{_lastLdrValue.Value}", cancellationToken);
+            await client.SendAsync(_lastRadarMessage, cancellationToken);
+        }
+
+        if (_lastAlertMessage is not null)
+        {
+            await client.SendAsync(_lastAlertMessage, cancellationToken);
+        }
+
+        if (_lastStatusMessage is not null)
+        {
+            await client.SendAsync(_lastStatusMessage, cancellationToken);
         }
     }
 
-    private async Task BroadcastAsync(string message, CancellationToken cancellationToken)
+    private void SaveDeviceState(string message)
     {
-        foreach (ClientSession client in _clients.Values)
+        string command = message.ToUpperInvariant();
+
+        if (command.StartsWith("RADAR:", StringComparison.Ordinal))
+        {
+            _lastRadarMessage = message;
+        }
+        else if (command is "ALERT:ON" or "ALERT:OFF")
+        {
+            _lastAlertMessage = message;
+        }
+        else if (command.StartsWith("STATUS:", StringComparison.Ordinal))
+        {
+            _lastStatusMessage = message;
+        }
+    }
+
+    private async Task BroadcastToClientsAsync(string message, CancellationToken cancellationToken)
+    {
+        foreach (ClientSession client in _clients.Values.Where(static client => client.Role == ClientRole.Client))
         {
             try
             {
@@ -358,40 +382,16 @@ public sealed class ServerEndPoint : IAsyncDisposable
         Log($"Client disconnected: {client.RemoteEndPoint}");
     }
 
-    private static bool TryParseLedCommand(string command, out bool ledOn)
+    private static bool IsArduinoBroadcastMessage(string command)
     {
-        switch (command)
-        {
-            case "LED_ON":
-            case "LED:ON":
-            case "LED=ON":
-                ledOn = true;
-                return true;
-
-            case "LED_OFF":
-            case "LED:OFF":
-            case "LED=OFF":
-                ledOn = false;
-                return true;
-
-            default:
-                ledOn = false;
-                return false;
-        }
+        return command.StartsWith("RADAR:", StringComparison.Ordinal)
+            || command is "ALERT:ON" or "ALERT:OFF"
+            || command.StartsWith("STATUS:", StringComparison.Ordinal);
     }
 
-    private static bool TryParseLdrValue(string message, out int value)
+    private static bool IsClientCommand(string command)
     {
-        value = 0;
-
-        string[] parts = message.Split(':', StringSplitOptions.TrimEntries);
-
-        if (parts.Length != 2 || !parts[0].Equals("LDR", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return int.TryParse(parts[1], out value);
+        return command is "CMD:ALLOW" or "CMD:WARN" or "CMD:RESET";
     }
 
     private void Log(string message)
@@ -455,6 +455,6 @@ public sealed class ServerEndPoint : IAsyncDisposable
     {
         Unknown,
         Arduino,
-        App
+        Client
     }
 }
