@@ -198,21 +198,21 @@ namespace IoT_ClientPC
             ApplyRadarMessage(testMessage);
         }
 
-        private async void btnRadarOn_Click(object sender, EventArgs e)
+        private void btnRadarOn_Click(object sender, EventArgs e)
         {
             radarTimer.Start();
 
             btnRadarOn.Enabled = false;
             btnRadarOff.Enabled = true;
 
-            // 서버 연결이 되어 있을 때만 명령 전송
-            if (tcpClientManager.IsConnected)
-            {
-                await SendCommandAsync("RADAR_ON");
-            }
+            //// 서버 연결이 되어 있을 때만 명령 전송
+            //if (tcpClientManager.IsConnected)
+            //{
+            //    await SendCommandAsync("RADAR_ON");
+            //}
         }
 
-        private async void btnRadarOff_Click(object sender, EventArgs e)
+        private void btnRadarOff_Click(object sender, EventArgs e)
         {
             radarTimer.Stop();
 
@@ -220,10 +220,10 @@ namespace IoT_ClientPC
             btnRadarOff.Enabled = false;
 
             // 서버 연결이 되어 있을 때만 명령 전송
-            if (tcpClientManager.IsConnected)
-            {
-                await SendCommandAsync("RADAR_OFF");
-            }
+            //if (tcpClientManager.IsConnected)
+            //{
+            //    await SendCommandAsync("RADAR_OFF");
+            //}
         }
 
         private void pnlDistanceGraph_Paint(object sender, PaintEventArgs e)
@@ -243,7 +243,7 @@ namespace IoT_ClientPC
 
             UpdateStatusUi();
 
-            await SendCommandAsync("ALARM_ON");
+            await SendCommandAsync("CMD:WARN");
         }
 
         private async void btnAllow_Click(object sender, EventArgs e)
@@ -253,8 +253,7 @@ namespace IoT_ClientPC
 
             UpdateStatusUi();
 
-            await SendCommandAsync("ALARM_OFF");
-            await SendCommandAsync("ALLOW_ON");
+            await SendCommandAsync("CMD:ALLOW");
         }
 
         private async void btnReset_Click(object sender, EventArgs e)
@@ -284,9 +283,7 @@ namespace IoT_ClientPC
             pnlDistanceGraph.Invalidate();
 
 
-            await SendCommandAsync("RESET");
-            await SendCommandAsync("ALARM_OFF");
-            await SendCommandAsync("ALLOW_OFF");
+            await SendCommandAsync("CMD:RESET");
         }
 
         private async void btnConnect_Click(object sender, EventArgs e)
@@ -302,6 +299,7 @@ namespace IoT_ClientPC
                 }
 
                 await tcpClientManager.ConnectAsync(ip, port);
+                await tcpClientManager.SendAsync("ROLE:CLIENT");
 
                 lblConnection.Text = "Connected";
                 btnConnect.Enabled = false;
