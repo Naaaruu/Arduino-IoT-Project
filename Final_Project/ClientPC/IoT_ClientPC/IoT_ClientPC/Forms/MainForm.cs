@@ -16,6 +16,11 @@ namespace IoT_ClientPC
         private bool isAlarmActive = false;    // 경보음 + LED가 켜져 있는 상태
         private bool isAllowed = false;        // 허용 상태, 위험 거리여도 자동 경보 안 울림
         private bool isDangerDetected = false; // 위험 거리 감지 상태
+        private bool isManualWarningActive = false;
+        private bool isRadarEnabled = false;
+        private bool hasDetectedPosition = false;
+        private int detectedAngle = 90;
+        private int detectedDistance = 25;
 
         private const int DangerDistance = 15;
         private const int WarningDistance = 30;
@@ -96,6 +101,9 @@ namespace IoT_ClientPC
         }
         private void ApplyRadarMessage(string message)
         {
+            if (!isRadarEnabled)
+                return;
+
             if (radarDataParser.TryParse(message, out RadarData? data) && data != null)
             {
                 currentAngle = data.Angle;
@@ -116,68 +124,74 @@ namespace IoT_ClientPC
         private void pnlRadar_Paint(object sender, PaintEventArgs e)
         {
             radarRenderer.Draw(
-            e.Graphics,
-            pnlRadar.ClientRectangle,
-            currentAngle,
-            currentDistance,
-            radarDirection);
-
+                e.Graphics,
+                pnlRadar.ClientRectangle,
+                currentAngle,
+                currentDistance,
+                radarDirection
+            );
         }
         private void UpdateStatusUi()
         {
-            // 거리값 표시
+            Color indicatorColor = Color.LimeGreen;
+
             lblIndicatorDistance.Text = $"{currentDistance} cm";
 
             if (isAlarmActive)
             {
-                // 경보음 + LED ON 상태
-                pnlDistanceIndicator.BackColor = Color.LightCoral;
+                indicatorColor = Color.LightCoral;
                 lblConnection.Text = "경보 상태";
             }
             else if (isAllowed)
             {
-                // 허용 상태: 위험 거리여도 자동 경보 막음
-                pnlDistanceIndicator.BackColor = Color.DeepSkyBlue;
+                indicatorColor = Color.DeepSkyBlue;
                 lblConnection.Text = "허용 상태";
             }
             else if (isDangerDetected)
             {
-                // 위험 거리 감지됐지만, 아직 경보 처리 전 상태
-                pnlDistanceIndicator.BackColor = Color.Gold;
+                indicatorColor = Color.Gold;
                 lblConnection.Text = "위험 감지";
             }
             else if (currentDistance <= WarningDistance)
             {
-                // 주의 거리
-                pnlDistanceIndicator.BackColor = Color.Gold;
+                indicatorColor = Color.Gold;
                 lblConnection.Text = "주의 상태";
             }
             else
             {
-                // 정상
-                pnlDistanceIndicator.BackColor = Color.LimeGreen;
+                indicatorColor = Color.LimeGreen;
                 lblConnection.Text = "정상 상태";
             }
+
+            pnlDistanceIndicator.BackColor = indicatorColor;
+            pnlDistanceIndicator.Invalidate();
         }
         private void CheckDistanceState()
         {
-            // 위험 거리 감지 여부
             isDangerDetected = currentDistance <= DangerDistance;
 
-            // 위험 거리 안에 들어왔고, 허용 상태가 아니면 자동 경보 발생
-            if (isDangerDetected && !isAllowed)
+            if (isAllowed)
             {
-                isAlarmActive = true;
+                isAlarmActive = false;
             }
-
-            // 경보는 자동으로 끄지 않음
-            // 허용 버튼 또는 초기화 버튼으로만 꺼짐
+            else
+            {
+                // 수동 경고가 켜져 있거나, 위험 거리면 경보 상태
+                isAlarmActive = isManualWarningActive || isDangerDetected;
+            }
 
             UpdateStatusUi();
         }
 
         private void radarTimer_Tick(object sender, EventArgs e)
         {
+            if (tcpClientManager.IsConnected)
+            {
+                pnlRadar.Invalidate();
+                pnlDistanceGraph.Invalidate();
+                return;
+            }
+
             currentAngle += radarDirection * 2;
 
             if (currentAngle >= 150)
@@ -191,8 +205,8 @@ namespace IoT_ClientPC
                 radarDirection = 1;
             }
 
-            // TODO: 실제 서버 연결 후, 이 테스트 메시지는 서버 수신 메시지로 대체
-            int testDistance = 25 + (int)(10 * Math.Sin(currentAngle * Math.PI / 180.0));
+            // 서버 미연결 상태에서만 UI 확인용 테스트값 사용
+            int testDistance = 35;
             string testMessage = $"RADAR:{currentAngle}:{testDistance}";
 
             ApplyRadarMessage(testMessage);
@@ -200,30 +214,23 @@ namespace IoT_ClientPC
 
         private void btnRadarOn_Click(object sender, EventArgs e)
         {
-            radarTimer.Start();
+            isRadarEnabled = true;
 
             btnRadarOn.Enabled = false;
             btnRadarOff.Enabled = true;
-
-            //// 서버 연결이 되어 있을 때만 명령 전송
-            //if (tcpClientManager.IsConnected)
-            //{
-            //    await SendCommandAsync("RADAR_ON");
-            //}
         }
 
         private void btnRadarOff_Click(object sender, EventArgs e)
         {
+            isRadarEnabled = false;
+
             radarTimer.Stop();
 
             btnRadarOn.Enabled = true;
             btnRadarOff.Enabled = false;
 
-            // 서버 연결이 되어 있을 때만 명령 전송
-            //if (tcpClientManager.IsConnected)
-            //{
-            //    await SendCommandAsync("RADAR_OFF");
-            //}
+            pnlRadar.Invalidate();
+            pnlDistanceGraph.Invalidate();
         }
 
         private void pnlDistanceGraph_Paint(object sender, PaintEventArgs e)
@@ -238,8 +245,9 @@ namespace IoT_ClientPC
 
         private async void btnWarning_Click(object sender, EventArgs e)
         {
-            isAlarmActive = true;   // 경보음 + LED ON
-            isAllowed = false;      // 허용 상태 해제
+            isManualWarningActive = true;
+            isAlarmActive = true;
+            isAllowed = false;
 
             UpdateStatusUi();
 
@@ -248,8 +256,9 @@ namespace IoT_ClientPC
 
         private async void btnAllow_Click(object sender, EventArgs e)
         {
-            isAllowed = true;       // 허용 상태 ON
-            isAlarmActive = false;  // 경보음 + LED OFF
+            isAllowed = true;
+            isManualWarningActive = false;
+            isAlarmActive = false;
 
             UpdateStatusUi();
 
@@ -260,30 +269,30 @@ namespace IoT_ClientPC
         {
             radarTimer.Stop();
 
-            btnRadarOn.Enabled = true;
-            btnRadarOff.Enabled = false;
-
-            // 경보/허용 상태 초기화
             isAlarmActive = false;
             isAllowed = false;
             isDangerDetected = false;
+            isManualWarningActive = false;
 
-            // 레이더 기본값
+            hasDetectedPosition = false;
+            detectedAngle = 90;
+            detectedDistance = 25;
+
             currentAngle = 90;
             currentDistance = 40;
             radarDirection = 1;
 
-            // 그래프 데이터 초기화
             distanceHistory.Clear();
 
-            // 화면 갱신
             UpdateStatusUi();
 
             pnlRadar.Invalidate();
             pnlDistanceGraph.Invalidate();
 
-
-            await SendCommandAsync("CMD:RESET");
+            if (tcpClientManager.IsConnected)
+            {
+                await SendCommandAsync("CMD:RESET");
+            }
         }
 
         private async void btnConnect_Click(object sender, EventArgs e)

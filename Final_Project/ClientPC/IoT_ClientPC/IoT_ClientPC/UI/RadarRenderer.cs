@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 
 namespace IoT_ClientPC.UI
 {
@@ -30,7 +31,7 @@ namespace IoT_ClientPC.UI
             int maxDistance = 40;
 
             using Pen gridPen = new Pen(Color.LimeGreen, 2);
-            using Pen sweepPen = new Pen(Color.LimeGreen, 3);
+            using Pen sweepPen = new Pen(Color.LimeGreen, 4);
             using Brush textBrush = new SolidBrush(Color.LimeGreen);
             using Font font = new Font("맑은 고딕", 9, FontStyle.Bold);
 
@@ -42,18 +43,17 @@ namespace IoT_ClientPC.UI
             );
 
             // 1. 초록 스캔 잔상
-            DrawGreenSweep(g, fullRadarRect, currentAngle, radarDirection);
+            // DrawGreenSweep(g, fullRadarRect, currentAngle, radarDirection);
 
             // 2. 빨간 감지 영역
-            DrawDetectedArea(
+            DrawDistancePoint(
                 g,
                 centerX,
                 centerY,
                 maxRadius,
                 maxDistance,
                 currentAngle,
-                currentDistance,
-                radarDirection
+                currentDistance
             );
 
             // 3. 격자선은 색상 효과 위에 다시 그림
@@ -70,6 +70,51 @@ namespace IoT_ClientPC.UI
             // 5. 하단 정보 표시
             g.DrawString($"Angle: {currentAngle}°", font, textBrush, 20, height - 30);
             g.DrawString($"Distance: {currentDistance} cm", font, textBrush, width - 160, height - 30);
+        }
+
+        private void DrawDistancePoint(
+            Graphics g,
+            int centerX,
+            int centerY,
+            int maxRadius,
+            int maxDistance,
+            int currentAngle,
+            int currentDistance)
+        {
+            if (currentDistance <= 0 || currentDistance > maxDistance)
+                return;
+
+            float distanceRatio = currentDistance / (float)maxDistance;
+            float pointRadiusFromCenter = maxRadius * distanceRatio;
+
+            double rad = Math.PI * currentAngle / 180.0;
+
+            float pointX = centerX + (float)(pointRadiusFromCenter * Math.Cos(Math.PI - rad));
+            float pointY = centerY - (float)(pointRadiusFromCenter * Math.Sin(rad));
+
+            Color pointColor = Color.Red;
+
+            float coreSize = 7f;
+            float glowSize = 17f;
+
+            using Brush glowBrush = new SolidBrush(Color.FromArgb(80, pointColor));
+            using Brush coreBrush = new SolidBrush(Color.FromArgb(230, pointColor));
+
+            g.FillEllipse(
+                glowBrush,
+                pointX - glowSize,
+                pointY - glowSize,
+                glowSize * 2,
+                glowSize * 2
+            );
+
+            g.FillEllipse(
+                coreBrush,
+                pointX - coreSize,
+                pointY - coreSize,
+                coreSize * 2,
+                coreSize * 2
+            );
         }
 
         private void DrawGreenSweep(
@@ -112,68 +157,85 @@ namespace IoT_ClientPC.UI
             int centerY,
             int maxRadius,
             int maxDistance,
-            int currentAngle,
-            int currentDistance,
-            int radarDirection)
+            bool hasDetectedPosition,
+            int detectedAngle,
+            int detectedDistance,
+            int currentAngle)
         {
-            if (currentDistance <= 0 || currentDistance > maxDistance)
+            if (!hasDetectedPosition)
                 return;
 
-            int detectedRadius = (int)(maxRadius * (currentDistance / (double)maxDistance));
+            if (detectedDistance <= 0 || detectedDistance > maxDistance)
+                return;
 
-            int redTrailCount = 42;
-            float redSectorWidth = 1.7f;
+            // 스캔바가 감지 위치 근처를 지나갈 때만 보이게 함
+            // 이 값을 키우면 빨간 표시가 더 오래 보임
+            float visibleAngleRange = 18f;
 
-            for (int i = redTrailCount - 1; i >= 0; i--)
-            {
-                float t = i / (float)(redTrailCount - 1);
-                float fade = (float)Math.Pow(1f - t, 1.65f);
+            float angleDiff = GetAngleDiff(currentAngle, detectedAngle);
 
-                int trailAngle = currentAngle - i * radarDirection;
-                float sectorStartAngle = 180 + trailAngle - redSectorWidth / 2f;
+            if (angleDiff > visibleAngleRange)
+                return;
 
-                int innerOffset = (int)(8f + i * 2.4f + 9f * (float)Math.Sin(i * 0.48f));
-                int innerRadius = detectedRadius + innerOffset;
+            // 감지된 거리값을 레이더 반지름으로 변환
+            float distanceRatio = detectedDistance / (float)maxDistance;
+            float detectedRadius = maxRadius * distanceRatio;
 
-                if (innerRadius < detectedRadius)
-                    innerRadius = detectedRadius;
+            // 레이더 좌표계 변환
+            double rad = Math.PI * detectedAngle / 180.0;
 
-                if (innerRadius > maxRadius - 18)
-                    innerRadius = maxRadius - 18;
+            float targetX = centerX + (float)(detectedRadius * Math.Cos(Math.PI - rad));
+            float targetY = centerY - (float)(detectedRadius * Math.Sin(rad));
 
-                int outerRadius = maxRadius - (int)(i * 0.35f);
+            // 스캔바 중심에 가까울수록 더 진하게 표시
+            float visibility = 1f - (angleDiff / visibleAngleRange);
 
-                if (outerRadius <= innerRadius + 10)
-                    outerRadius = innerRadius + 10;
+            int glowAlpha = (int)(60 + 80 * visibility);
+            int midAlpha = (int)(90 + 90 * visibility);
+            int coreAlpha = (int)(150 + 80 * visibility);
 
-                if (outerRadius > maxRadius)
-                    outerRadius = maxRadius;
+            // 표시 크기
+            // 이 값을 키우면 빨간 감지 표시가 더 커짐
+            float blobRadius = 16f;
+            float glowRadius = blobRadius * 2.2f;
+            float midRadius = blobRadius * 1.45f;
+            float coreRadius = blobRadius * 0.85f;
 
-                Color darkRed = Color.FromArgb(80, 0, 0);
-                Color midRed = Color.FromArgb(210, 20, 20);
-                Color brightRed = Color.FromArgb(255, 90, 55);
+            using Brush glowBrush = new SolidBrush(Color.FromArgb(glowAlpha, 255, 40, 20));
+            using Brush midBrush = new SolidBrush(Color.FromArgb(midAlpha, 255, 80, 40));
+            using Brush coreBrush = new SolidBrush(Color.FromArgb(coreAlpha, 255, 0, 0));
 
-                Color redTone;
-                if (fade < 0.55f)
-                    redTone = LerpColor(darkRed, midRed, fade / 0.55f);
-                else
-                    redTone = LerpColor(midRed, brightRed, (fade - 0.55f) / 0.45f);
+            // 바깥 glow
+            g.FillEllipse(
+                glowBrush,
+                targetX - glowRadius,
+                targetY - glowRadius,
+                glowRadius * 2,
+                glowRadius * 2
+            );
 
-                int alpha = (int)(12 + 155 * fade);
+            // 중간 빨강
+            g.FillEllipse(
+                midBrush,
+                targetX - midRadius,
+                targetY - midRadius,
+                midRadius * 2,
+                midRadius * 2
+            );
 
-                using Brush detectedBrush = new SolidBrush(Color.FromArgb(alpha, redTone));
+            // 중심 진한 빨강
+            g.FillEllipse(
+                coreBrush,
+                targetX - coreRadius,
+                targetY - coreRadius,
+                coreRadius * 2,
+                coreRadius * 2
+            );
+        }
 
-                FillRadarRingSector(
-                    g,
-                    detectedBrush,
-                    centerX,
-                    centerY,
-                    innerRadius,
-                    outerRadius,
-                    sectorStartAngle,
-                    redSectorWidth
-                );
-            }
+        private float GetAngleDiff(int angle1, int angle2)
+        {
+            return Math.Abs(angle1 - angle2);
         }
 
         private void DrawGrid(

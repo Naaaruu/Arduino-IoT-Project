@@ -39,7 +39,6 @@
             btnReset = new Button();
             lblConnection = new Label();
             pnlDistanceGraph = new Panel();
-            lblGraphText = new Label();
             lblIP = new Label();
             txtIp = new TextBox();
             lblPort = new Label();
@@ -53,7 +52,6 @@
             radarTimer = new System.Windows.Forms.Timer(components);
             pnlIndicator.SuspendLayout();
             pnlControl.SuspendLayout();
-            pnlDistanceGraph.SuspendLayout();
             SuspendLayout();
             // 
             // lblTitle
@@ -155,24 +153,11 @@
             // 
             pnlDistanceGraph.BackColor = Color.Black;
             pnlDistanceGraph.BorderStyle = BorderStyle.FixedSingle;
-            pnlDistanceGraph.Controls.Add(lblGraphText);
             pnlDistanceGraph.Location = new Point(15, 13);
             pnlDistanceGraph.Name = "pnlDistanceGraph";
             pnlDistanceGraph.Size = new Size(369, 242);
             pnlDistanceGraph.TabIndex = 0;
             pnlDistanceGraph.Paint += pnlDistanceGraph_Paint;
-            // 
-            // lblGraphText
-            // 
-            lblGraphText.AutoSize = true;
-            lblGraphText.BackColor = Color.Transparent;
-            lblGraphText.ForeColor = Color.White;
-            lblGraphText.Location = new Point(0, 0);
-            lblGraphText.Name = "lblGraphText";
-            lblGraphText.Size = new Size(69, 15);
-            lblGraphText.TabIndex = 0;
-            lblGraphText.Text = "Raw 그래프";
-            lblGraphText.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // lblIP
             // 
@@ -306,8 +291,6 @@
             pnlIndicator.ResumeLayout(false);
             pnlControl.ResumeLayout(false);
             pnlControl.PerformLayout();
-            pnlDistanceGraph.ResumeLayout(false);
-            pnlDistanceGraph.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -323,7 +306,6 @@
         private Button btnAllow;
         private Button btnReset;
         private Label lblConnection;
-        private Label lblGraphText;
         private Label lblIP;
         private TextBox txtIp;
         private Label lblPort;

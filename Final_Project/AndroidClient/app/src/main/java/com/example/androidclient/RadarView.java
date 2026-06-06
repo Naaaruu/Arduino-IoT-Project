@@ -10,6 +10,8 @@ import android.view.View;
 
 public class RadarView extends View {
 
+    private boolean isObjectDetected = false;
+
     private final Paint gridPaint = new Paint();
     private final Paint sweepPaint = new Paint();
     private final Paint detectedPaint = new Paint();
@@ -50,10 +52,11 @@ public class RadarView extends View {
         textPaint.setAntiAlias(true);
     }
 
-    public void updateRadar(int angle, int distance, int direction) {
+    public void updateRadar(int angle, int distance, int direction, boolean detected) {
         currentAngle = angle;
         currentDistance = distance;
         radarDirection = direction;
+        isObjectDetected = detected;
         invalidate();
     }
 
@@ -61,6 +64,7 @@ public class RadarView extends View {
         currentAngle = 90;
         currentDistance = 40;
         radarDirection = 1;
+        isObjectDetected = false;
         invalidate();
     }
 
@@ -83,68 +87,6 @@ public class RadarView extends View {
                 centerX + maxRadius,
                 centerY + maxRadius
         );
-
-        // 초록 스캔 잔상
-        int trailCount = 34;
-        float sectorWidth = 2.2f;
-
-        for (int i = trailCount - 1; i >= 0; i--) {
-            float t = i / (float) (trailCount - 1);
-            float fade = (float) Math.pow(1f - t, 1.8f);
-
-            int trailAngle = currentAngle - i * radarDirection;
-            float startAngle = 180 + trailAngle - sectorWidth / 2f;
-
-            int alpha = (int) (20 + 130 * fade);
-            sweepPaint.setColor(Color.argb(alpha, 80, 255, 80));
-
-            canvas.drawArc(fullRect, startAngle, sectorWidth, true, sweepPaint);
-        }
-
-        // 빨간 감지 영역
-        if (currentDistance > 0 && currentDistance <= maxDistance) {
-            int detectedRadius = (int) (maxRadius * (currentDistance / (float) maxDistance));
-            int redTrailCount = 26;
-            float redSectorWidth = 2.4f;
-
-            RectF detectedRect = new RectF(
-                    centerX - maxRadius,
-                    centerY - maxRadius,
-                    centerX + maxRadius,
-                    centerY + maxRadius
-            );
-
-            for (int i = redTrailCount - 1; i >= 0; i--) {
-                float t = i / (float) (redTrailCount - 1);
-                float fade = (float) Math.pow(1f - t, 1.5f);
-
-                int trailAngle = currentAngle - i * radarDirection;
-                float startAngle = 180 + trailAngle - redSectorWidth / 2f;
-
-                int alpha = (int) (25 + 170 * fade);
-                detectedPaint.setColor(Color.argb(alpha, 255, 60, 40));
-
-                // 일단 바깥쪽 전체 부채꼴로 감지 표현
-                // PC 버전처럼 링 형태는 이후 더 다듬을 수 있음
-                canvas.drawArc(detectedRect, startAngle, redSectorWidth, true, detectedPaint);
-
-                // 안쪽을 검정으로 덮어 감지 거리 안쪽을 비움
-                Paint erasePaint = new Paint();
-                erasePaint.setColor(Color.BLACK);
-                erasePaint.setStyle(Paint.Style.FILL);
-                erasePaint.setAntiAlias(true);
-
-                int innerRadius = Math.min(maxRadius - 10, detectedRadius + i * 2);
-                RectF innerRect = new RectF(
-                        centerX - innerRadius,
-                        centerY - innerRadius,
-                        centerX + innerRadius,
-                        centerY + innerRadius
-                );
-
-                canvas.drawArc(innerRect, startAngle, redSectorWidth, true, erasePaint);
-            }
-        }
 
         // 거리 반원 눈금
         for (int r = maxRadius / 4; r <= maxRadius; r += maxRadius / 4) {
@@ -174,6 +116,29 @@ public class RadarView extends View {
 
         // 바닥선
         canvas.drawLine(centerX - maxRadius, centerY, centerX + maxRadius, centerY, gridPaint);
+
+        // 현재 거리 위치 점
+        if (isObjectDetected && currentDistance > 0 && currentDistance <= maxDistance) {
+            float distanceRatio = currentDistance / (float) maxDistance;
+            float pointRadius = maxRadius * distanceRatio;
+
+            double pointRad = Math.PI * currentAngle / 180.0;
+
+            float pointX = centerX + (float) (pointRadius * Math.cos(Math.PI - pointRad));
+            float pointY = centerY - (float) (pointRadius * Math.sin(pointRad));
+
+            Paint pointPaint = new Paint();
+            pointPaint.setAntiAlias(true);
+            pointPaint.setStyle(Paint.Style.FILL);
+
+            // 바깥 glow
+            pointPaint.setColor(Color.argb(90, 255, 0, 0));
+            canvas.drawCircle(pointX, pointY, 18f, pointPaint);
+
+            // 중심점
+            pointPaint.setColor(Color.argb(230, 255, 0, 0));
+            canvas.drawCircle(pointX, pointY, 7f, pointPaint);
+        }
 
         // 현재 스캔 중심선
         double currentRad = Math.PI * currentAngle / 180.0;

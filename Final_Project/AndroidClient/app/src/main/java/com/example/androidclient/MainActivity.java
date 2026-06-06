@@ -167,10 +167,6 @@ public class MainActivity extends AppCompatActivity {
                     isConnected = true;
                     txtConnectionStatus.setText("Connected");
                     btnConnect.setText("해제");
-
-                    // 서버 연결 전까지는 테스트용 애니메이션도 같이 켜둠
-                    // 실제 RADAR 수신이 들어오면 나중에 이 부분은 꺼도 됨
-                    startRadarTest();
                 });
 
                 startReceiveLoop();
@@ -198,9 +194,8 @@ public class MainActivity extends AppCompatActivity {
         isConnected = false;
         txtConnectionStatus.setText("Disconnected");
         btnConnect.setText("연결");
-
-        stopRadarTest();
     }
+
 
     private void startReceiveLoop() {
         isReceiving = true;
@@ -252,6 +247,14 @@ public class MainActivity extends AppCompatActivity {
             currentAngle = Integer.parseInt(parts[1]);
             currentDistance = Integer.parseInt(parts[2]);
 
+            // 감지 여부 판단
+            // 30cm 이하일 때만 레이더에 점 표시
+            boolean detected = currentDistance <= 30;
+
+            // 서버에서 실제 RADAR 값을 받았을 때만 그래프/레이더 갱신
+            graphView.addDistance(currentDistance);
+            radarView.updateRadar(currentAngle, currentDistance, radarDirection, detected);
+
             updateStatusUi();
 
         } catch (NumberFormatException ignored) {
@@ -260,7 +263,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateStatusUi() {
         graphView.addDistance(currentDistance);
-        radarView.updateRadar(currentAngle, currentDistance, 1);
 
         if (isAlarmActive) {
             txtStatus.setText("DANGER");
