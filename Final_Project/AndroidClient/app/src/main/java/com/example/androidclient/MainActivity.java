@@ -103,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
         btnWarning.setOnClickListener(v -> {
             isAlarmActive = true;
             isAllowed = false;
+            autoWarningSent = true;
 
             updateStatusUi();
 
@@ -281,16 +282,20 @@ public class MainActivity extends AppCompatActivity {
             txtStatus.setText("ALLOWED");
             txtStatus.setBackgroundColor(Color.rgb(30, 144, 255));
             setIndicatorColor("BLUE");
+        } else if (isAlarmActive) {
+            txtStatus.setText("ALARM");
+            txtStatus.setBackgroundColor(Color.rgb(220, 70, 70));
+            setIndicatorColor("RED");
         } else if (currentDistance <= 15) {
-            txtStatus.setText(isAlarmActive ? "DANGER" : "DANGER");
+            txtStatus.setText("DANGER");
             txtStatus.setBackgroundColor(Color.rgb(220, 70, 70));
             setIndicatorColor("RED");
         } else if (currentDistance <= 30) {
-            txtStatus.setText(isAlarmActive ? "WARNING" : "WARNING");
+            txtStatus.setText("WARNING");
             txtStatus.setBackgroundColor(Color.rgb(255, 193, 7));
             setIndicatorColor("YELLOW");
         } else {
-            txtStatus.setText(isAlarmActive ? "SAFE" : "SAFE");
+            txtStatus.setText("SAFE");
             txtStatus.setBackgroundColor(Color.rgb(27, 143, 27));
             setIndicatorColor("GREEN");
         }
