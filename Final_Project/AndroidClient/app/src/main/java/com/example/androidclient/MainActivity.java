@@ -36,6 +36,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isAlarmActive = false;
     private boolean isAllowed = false;
     private boolean isRadarRunning = false;
+    private boolean autoWarningSent = false;
 
     private final TcpClientManager tcpClientManager = new TcpClientManager();
     private Thread receiveThread;
@@ -111,6 +112,9 @@ public class MainActivity extends AppCompatActivity {
         btnAllow.setOnClickListener(v -> {
             isAllowed = true;
             isAlarmActive = false;
+            autoWarningSent = false;
+
+            radarView.clearRadarPoints();
 
             updateStatusUi();
 
@@ -118,10 +122,9 @@ public class MainActivity extends AppCompatActivity {
         });
 
         btnReset.setOnClickListener(v -> {
-            stopRadarTest();
-
             isAlarmActive = false;
             isAllowed = false;
+            autoWarningSent = false;
 
             currentAngle = 90;
             currentDistance = 40;
@@ -129,6 +132,7 @@ public class MainActivity extends AppCompatActivity {
 
             graphView.clearData();
             radarView.resetRadar();
+            radarView.clearRadarPoints();
 
             updateStatusUi();
 
@@ -247,13 +251,24 @@ public class MainActivity extends AppCompatActivity {
             currentAngle = Integer.parseInt(parts[1]);
             currentDistance = Integer.parseInt(parts[2]);
 
-            // 감지 여부 판단
-            // 30cm 이하일 때만 레이더에 점 표시
-            boolean detected = currentDistance <= 30;
-
-            // 서버에서 실제 RADAR 값을 받았을 때만 그래프/레이더 갱신
             graphView.addDistance(currentDistance);
-            radarView.updateRadar(currentAngle, currentDistance, radarDirection, detected);
+
+            // 레이더 선 갱신
+            radarView.updateRadar(currentAngle, currentDistance, radarDirection, currentDistance <= 30);
+
+            // 최근 감지점 추가
+            radarView.addRadarPoint(currentAngle, currentDistance);
+
+            // 위험 거리 감지 시 경보 상태 유지
+            if (currentDistance <= 15 && !isAllowed) {
+                isAlarmActive = true;
+
+                // 위험 감지 시 서버로 경고 명령을 한 번만 전송
+                if (!autoWarningSent) {
+                    sendCommand("CMD:WARN");
+                    autoWarningSent = true;
+                }
+            }
 
             updateStatusUi();
 
@@ -262,26 +277,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateStatusUi() {
-        graphView.addDistance(currentDistance);
-
-        if (isAlarmActive) {
-            txtStatus.setText("DANGER");
-            txtStatus.setBackgroundColor(Color.rgb(220, 70, 70));
-            setIndicatorColor("RED");
-        } else if (isAllowed) {
+        if (isAllowed) {
             txtStatus.setText("ALLOWED");
             txtStatus.setBackgroundColor(Color.rgb(30, 144, 255));
             setIndicatorColor("BLUE");
-        } else if (currentDistance <= DANGER_DISTANCE) {
-            txtStatus.setText("DANGER");
+        } else if (currentDistance <= 15) {
+            txtStatus.setText(isAlarmActive ? "DANGER" : "DANGER");
             txtStatus.setBackgroundColor(Color.rgb(220, 70, 70));
             setIndicatorColor("RED");
-        } else if (currentDistance <= WARNING_DISTANCE) {
-            txtStatus.setText("WARNING");
+        } else if (currentDistance <= 30) {
+            txtStatus.setText(isAlarmActive ? "WARNING" : "WARNING");
             txtStatus.setBackgroundColor(Color.rgb(255, 193, 7));
             setIndicatorColor("YELLOW");
         } else {
-            txtStatus.setText("SAFE");
+            txtStatus.setText(isAlarmActive ? "SAFE" : "SAFE");
             txtStatus.setBackgroundColor(Color.rgb(27, 143, 27));
             setIndicatorColor("GREEN");
         }

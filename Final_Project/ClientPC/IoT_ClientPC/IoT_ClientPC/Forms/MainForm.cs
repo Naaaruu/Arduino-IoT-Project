@@ -10,6 +10,13 @@ namespace IoT_ClientPC
 {
     public partial class MainForm : Form
     {
+
+        private DateTime lastRadarPointTime = DateTime.MinValue;
+        private int lastRadarPointAngle = -999;
+
+        private const int RadarPointIntervalMs = 250;
+        private const int RadarPointAngleGap = 6;
+
         private int currentAngle = 90;
         private int currentDistance = 25;
         private int radarDirection = 1;
@@ -21,6 +28,12 @@ namespace IoT_ClientPC
         private bool hasDetectedPosition = false;
         private int detectedAngle = 90;
         private int detectedDistance = 25;
+
+        private readonly List<RadarPoint> radarPoints = new List<RadarPoint>();
+
+        private const int MaxDistance = 40;
+        private const int RadarPointLifeSeconds = 2;
+        private const int RadarPointAngleBucket = 4;
 
         private const int DangerDistance = 15;
         private const int WarningDistance = 30;
@@ -111,6 +124,8 @@ namespace IoT_ClientPC
 
                 CheckDistanceState();
 
+                AddRadarPoint(currentAngle, currentDistance);
+
                 distanceHistory.Add(currentDistance);
 
                 if (distanceHistory.Count > 60)
@@ -121,14 +136,62 @@ namespace IoT_ClientPC
             }
         }
 
+        private void AddRadarPoint(int angle, int distance)
+        {
+            if (distance <= 0 || distance > MaxDistance)
+                return;
+
+            DateTime now = DateTime.Now;
+
+            bool timeEnough =
+                (now - lastRadarPointTime).TotalMilliseconds >= RadarPointIntervalMs;
+
+            bool angleEnough =
+                Math.Abs(angle - lastRadarPointAngle) >= RadarPointAngleGap;
+
+            // 시간도 너무 짧고 각도도 거의 안 변했으면 점 추가 안 함
+            if (!timeEnough && !angleEnough)
+            {
+                RemoveExpiredRadarPoints();
+                return;
+            }
+
+            int angleBucket = angle / RadarPointAngleBucket * RadarPointAngleBucket;
+
+            // 같은 각도 근처 기존 점 제거 후 새 점으로 갱신
+            radarPoints.RemoveAll(p => Math.Abs(p.Angle - angleBucket) <= RadarPointAngleBucket / 2);
+
+            radarPoints.Add(new RadarPoint
+            {
+                Angle = angleBucket,
+                Distance = distance,
+                CreatedAt = now
+            });
+
+            lastRadarPointTime = now;
+            lastRadarPointAngle = angle;
+
+            RemoveExpiredRadarPoints();
+        }
+
+        private void RemoveExpiredRadarPoints()
+        {
+            radarPoints.RemoveAll(p =>
+                (DateTime.Now - p.CreatedAt).TotalSeconds > RadarPointLifeSeconds
+            );
+        }
+
         private void pnlRadar_Paint(object sender, PaintEventArgs e)
         {
+            RemoveExpiredRadarPoints();
+
             radarRenderer.Draw(
                 e.Graphics,
                 pnlRadar.ClientRectangle,
                 currentAngle,
                 currentDistance,
-                radarDirection
+                radarDirection,
+                radarPoints
             );
         }
         private void UpdateStatusUi()
@@ -283,6 +346,10 @@ namespace IoT_ClientPC
             radarDirection = 1;
 
             distanceHistory.Clear();
+            radarPoints.Clear();
+
+            lastRadarPointTime = DateTime.MinValue;
+            lastRadarPointAngle = -999;
 
             UpdateStatusUi();
 

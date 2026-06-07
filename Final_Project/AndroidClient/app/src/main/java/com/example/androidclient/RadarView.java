@@ -7,6 +7,9 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.util.AttributeSet;
 import android.view.View;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 public class RadarView extends View {
 
@@ -16,6 +19,12 @@ public class RadarView extends View {
     private final Paint sweepPaint = new Paint();
     private final Paint detectedPaint = new Paint();
     private final Paint textPaint = new Paint();
+
+    private final List<RadarPoint> radarPoints = new ArrayList<>();
+
+    private static final int MAX_DISTANCE = 40;
+    private static final int POINT_LIFE_MS = 3000;
+    private static final int POINT_ANGLE_BUCKET = 4;
 
     private int currentAngle = 90;
     private int currentDistance = 40;
@@ -50,6 +59,66 @@ public class RadarView extends View {
         textPaint.setColor(Color.rgb(0, 255, 0));
         textPaint.setTextSize(28f);
         textPaint.setAntiAlias(true);
+    }
+
+    public void addRadarPoint(int angle, int distance) {
+        if (distance <= 0 || distance > MAX_DISTANCE) {
+            return;
+        }
+
+        // 감지 범위 밖이면 점을 안 찍음
+        // 30cm 이하만 레이더 감지점으로 표시
+        if (distance > 30) {
+            removeExpiredRadarPoints();
+            invalidate();
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+
+        boolean timeEnough = now - lastPointTime >= POINT_INTERVAL_MS;
+        boolean angleEnough = Math.abs(angle - lastPointAngle) >= POINT_ANGLE_GAP;
+
+        if (!timeEnough && !angleEnough) {
+            removeExpiredRadarPoints();
+            invalidate();
+            return;
+        }
+
+        int angleBucket = angle / POINT_ANGLE_BUCKET * POINT_ANGLE_BUCKET;
+
+        // 같은 각도 근처 점은 새 값으로 갱신
+        Iterator<RadarPoint> iterator = radarPoints.iterator();
+        while (iterator.hasNext()) {
+            RadarPoint point = iterator.next();
+
+            if (Math.abs(point.angle - angleBucket) <= POINT_ANGLE_BUCKET / 2) {
+                iterator.remove();
+            }
+        }
+
+        radarPoints.add(new RadarPoint(angleBucket, distance, now));
+
+        removeExpiredRadarPoints();
+        invalidate();
+    }
+
+    private void removeExpiredRadarPoints() {
+        long now = System.currentTimeMillis();
+
+        Iterator<RadarPoint> iterator = radarPoints.iterator();
+        while (iterator.hasNext()) {
+            RadarPoint point = iterator.next();
+
+            if (now - point.createdAt > POINT_LIFE_MS) {
+                iterator.remove();
+            }
+        }
+    }
+
+    public void clearRadarPoints() {
+        radarPoints.clear();
+        invalidate();
     }
 
     public void updateRadar(int angle, int distance, int direction, boolean detected) {
@@ -117,28 +186,8 @@ public class RadarView extends View {
         // 바닥선
         canvas.drawLine(centerX - maxRadius, centerY, centerX + maxRadius, centerY, gridPaint);
 
-        // 현재 거리 위치 점
-        if (isObjectDetected && currentDistance > 0 && currentDistance <= maxDistance) {
-            float distanceRatio = currentDistance / (float) maxDistance;
-            float pointRadius = maxRadius * distanceRatio;
-
-            double pointRad = Math.PI * currentAngle / 180.0;
-
-            float pointX = centerX + (float) (pointRadius * Math.cos(Math.PI - pointRad));
-            float pointY = centerY - (float) (pointRadius * Math.sin(pointRad));
-
-            Paint pointPaint = new Paint();
-            pointPaint.setAntiAlias(true);
-            pointPaint.setStyle(Paint.Style.FILL);
-
-            // 바깥 glow
-            pointPaint.setColor(Color.argb(90, 255, 0, 0));
-            canvas.drawCircle(pointX, pointY, 18f, pointPaint);
-
-            // 중심점
-            pointPaint.setColor(Color.argb(230, 255, 0, 0));
-            canvas.drawCircle(pointX, pointY, 7f, pointPaint);
-        }
+        // 최근 3초 동안의 감지점
+        drawRadarPoints(canvas, centerX, centerY, maxRadius);
 
         // 현재 스캔 중심선
         double currentRad = Math.PI * currentAngle / 180.0;
@@ -151,4 +200,71 @@ public class RadarView extends View {
         canvas.drawText("Angle: " + currentAngle + "°", 15, height - 12, textPaint);
         canvas.drawText("Distance: " + currentDistance + " cm", width - 220, height - 12, textPaint);
     }
+
+    private void drawRadarPoints(Canvas canvas, int centerX, int centerY, int maxRadius) {
+        removeExpiredRadarPoints();
+
+        long now = System.currentTimeMillis();
+
+        for (RadarPoint point : radarPoints) {
+            if (point.distance <= 0 || point.distance > MAX_DISTANCE) {
+                continue;
+            }
+
+            float distanceRatio = point.distance / (float) MAX_DISTANCE;
+            float pointRadius = maxRadius * distanceRatio;
+
+            double rad = Math.PI * point.angle / 180.0;
+
+            float pointX = centerX + (float) (pointRadius * Math.cos(Math.PI - rad));
+            float pointY = centerY - (float) (pointRadius * Math.sin(rad));
+
+            int pointColor;
+
+            if (point.distance <= 15) {
+                pointColor = Color.RED;
+            } else if (point.distance <= 30) {
+                pointColor = Color.rgb(255, 193, 7);
+            } else {
+                pointColor = Color.rgb(69, 209, 90);
+            }
+
+            float ageRatio = (now - point.createdAt) / (float) POINT_LIFE_MS;
+            float fade = 1f - ageRatio;
+
+            if (fade < 0f) {
+                fade = 0f;
+            }
+
+            int glowAlpha = (int) (80 * fade);
+            int coreAlpha = (int) (230 * fade);
+
+            Paint pointPaint = new Paint();
+            pointPaint.setAntiAlias(true);
+            pointPaint.setStyle(Paint.Style.FILL);
+
+            // 바깥 glow
+            pointPaint.setColor(applyAlpha(pointColor, glowAlpha));
+            canvas.drawCircle(pointX, pointY, 16f, pointPaint);
+
+            // 중심점
+            pointPaint.setColor(applyAlpha(pointColor, coreAlpha));
+            canvas.drawCircle(pointX, pointY, 7f, pointPaint);
+        }
+    }
+
+    private int applyAlpha(int color, int alpha) {
+        return Color.argb(
+                alpha,
+                Color.red(color),
+                Color.green(color),
+                Color.blue(color)
+        );
+    }
+
+    private long lastPointTime = 0;
+    private int lastPointAngle = -999;
+
+    private static final int POINT_INTERVAL_MS = 250;
+    private static final int POINT_ANGLE_GAP = 6;
 }

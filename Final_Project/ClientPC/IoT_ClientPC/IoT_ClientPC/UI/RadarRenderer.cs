@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using IoT_ClientPC.Models;
 
 namespace IoT_ClientPC.UI
 {
@@ -16,7 +17,8 @@ namespace IoT_ClientPC.UI
             Rectangle bounds,
             int currentAngle,
             int currentDistance,
-            int radarDirection)
+            int radarDirection,
+            List<RadarPoint> radarPoints)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
@@ -45,22 +47,20 @@ namespace IoT_ClientPC.UI
             // 1. 초록 스캔 잔상
             // DrawGreenSweep(g, fullRadarRect, currentAngle, radarDirection);
 
-            // 2. 빨간 감지 영역
-            DrawDistancePoint(
-                g,
-                centerX,
-                centerY,
-                maxRadius,
-                maxDistance,
-                currentAngle,
-                currentDistance
-            );
-
             // 3. 격자선은 색상 효과 위에 다시 그림
             DrawGrid(g, gridPen, font, textBrush, centerX, centerY, maxRadius);
 
             // 4. 현재 스캔 방향선
             double currentRad = Math.PI * currentAngle / 180.0;
+
+            DrawRadarPoints(
+    g,
+    centerX,
+    centerY,
+    maxRadius,
+    maxDistance,
+    radarPoints
+);
 
             int lineX = centerX + (int)(maxRadius * Math.Cos(Math.PI - currentRad));
             int lineY = centerY - (int)(maxRadius * Math.Sin(currentRad));
@@ -72,49 +72,73 @@ namespace IoT_ClientPC.UI
             g.DrawString($"Distance: {currentDistance} cm", font, textBrush, width - 160, height - 30);
         }
 
-        private void DrawDistancePoint(
+        private void DrawRadarPoints(
             Graphics g,
             int centerX,
             int centerY,
             int maxRadius,
             int maxDistance,
-            int currentAngle,
-            int currentDistance)
-        {
-            if (currentDistance <= 0 || currentDistance > maxDistance)
-                return;
+            List<RadarPoint> radarPoints)
+            {
+            foreach (RadarPoint point in radarPoints)
+            {
+                if (point.Distance <= 0 || point.Distance > maxDistance)
+                    continue;
 
-            float distanceRatio = currentDistance / (float)maxDistance;
-            float pointRadiusFromCenter = maxRadius * distanceRatio;
+                float distanceRatio = point.Distance / (float)maxDistance;
+                float pointRadiusFromCenter = maxRadius * distanceRatio;
 
-            double rad = Math.PI * currentAngle / 180.0;
+                double rad = Math.PI * point.Angle / 180.0;
 
-            float pointX = centerX + (float)(pointRadiusFromCenter * Math.Cos(Math.PI - rad));
-            float pointY = centerY - (float)(pointRadiusFromCenter * Math.Sin(rad));
+                float pointX = centerX + (float)(pointRadiusFromCenter * Math.Cos(Math.PI - rad));
+                float pointY = centerY - (float)(pointRadiusFromCenter * Math.Sin(rad));
 
-            Color pointColor = Color.Red;
+                Color pointColor;
 
-            float coreSize = 7f;
-            float glowSize = 17f;
+                if (point.Distance <= 15)
+                {
+                    pointColor = Color.Red;
+                }
+                else if (point.Distance <= 30)
+                {
+                    pointColor = Color.Gold;
+                }
+                else
+                {
+                    pointColor = Color.LimeGreen;
+                }
 
-            using Brush glowBrush = new SolidBrush(Color.FromArgb(80, pointColor));
-            using Brush coreBrush = new SolidBrush(Color.FromArgb(230, pointColor));
+                double age = (DateTime.Now - point.CreatedAt).TotalSeconds;
+                float fade = 1f - (float)(age / 3.0);
 
-            g.FillEllipse(
-                glowBrush,
-                pointX - glowSize,
-                pointY - glowSize,
-                glowSize * 2,
-                glowSize * 2
-            );
+                if (fade < 0f)
+                    fade = 0f;
 
-            g.FillEllipse(
-                coreBrush,
-                pointX - coreSize,
-                pointY - coreSize,
-                coreSize * 2,
-                coreSize * 2
-            );
+                int glowAlpha = (int)(70 * fade);
+                int coreAlpha = (int)(220 * fade);
+
+                float glowSize = 15f;
+                float coreSize = 6f;
+
+                using Brush glowBrush = new SolidBrush(Color.FromArgb(glowAlpha, pointColor));
+                using Brush coreBrush = new SolidBrush(Color.FromArgb(coreAlpha, pointColor));
+
+                g.FillEllipse(
+                    glowBrush,
+                    pointX - glowSize,
+                    pointY - glowSize,
+                    glowSize * 2,
+                    glowSize * 2
+                );
+
+                g.FillEllipse(
+                    coreBrush,
+                    pointX - coreSize,
+                    pointY - coreSize,
+                    coreSize * 2,
+                    coreSize * 2
+                );
+            }
         }
 
         private void DrawGreenSweep(
